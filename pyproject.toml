@@ -1,0 +1,35 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=3.0.0"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "cyclib"
+version = "0.1.0"
+description = "Python client bindings for CycFlow / CycLib"
+readme = "README.md"
+license = { file = "LICENSE.txt" }
+requires-python = ">=3.9"
+authors = [{ name = "griglapidus" }]
+dependencies = [
+    "numpy>=1.22",
+]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.5", "pandas>=1.5"]
+dev  = ["pytest>=7", "pytest-asyncio>=0.21"]
+
+[tool.scikit-build]
+wheel.packages = ["python/cyclib"]
+cmake.version = ">=3.15"
+cmake.build-type = "Release"
+# CYCLIB_ROOT forwarding:
+#   * default:  CMake falls back to ${project_dir}/../CycLib
+#   * override via environment:
+#       POSIX:       CYCLIB_ROOT=/abs/path pip install .
+#       PowerShell:  $env:CYCLIB_ROOT = "C:\path\to\CycLib"; pip install .
+#   * or via config-settings:
+#       pip install . -Ccmake.define.CYCLIB_ROOT=C:/path/to/CycLib
+# When the env var is not set, scikit-build-core does not forward an empty
+# value to CMake, so the CMake default takes effect cleanly.
+[tool.scikit-build.cmake.define]
+CYCLIB_ROOT = { env = "CYCLIB_ROOT" }
