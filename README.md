@@ -1,4 +1,4 @@
-# cyclib — Python bindings for CycFlow
+# cycflow — Python bindings for CycFlow
 
 Python bindings for [CycFlow / CycLib](https://github.com/griglapidus/CycFlow)
 covering both the client and server sides:
@@ -10,24 +10,10 @@ covering both the client and server sides:
 
 ## Installation
 
-Layout expected (CycLib as a sibling directory):
-
-```
-CycFlow/
-├── CycLib/
-└── cyclib-py/
-```
-
 ```bash
 pip install .
 # iterative development:
 pip install -e . --no-build-isolation
-```
-
-If CycLib lives elsewhere:
-
-```powershell
-pip install . -Ccmake.define.CYCLIB_ROOT="C:\path\to\CycLib"
 ```
 
 ## API overview

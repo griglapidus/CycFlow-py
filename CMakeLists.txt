@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(cyclib_py LANGUAGES CXX)
+project(cycflow_py LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -19,7 +19,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(pybind11)
 
 # -----------------------------------------------------------------------------
-# CycFlow (develop branch) — provides CycLib and asio::asio.
+# CycFlow (develop branch) — provides CycFlow and asio::asio.
 # BUILD_TESTING=OFF suppresses Qt-dependent test targets.
 # -----------------------------------------------------------------------------
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
@@ -33,7 +33,7 @@ FetchContent_MakeAvailable(cycflow)
 # -----------------------------------------------------------------------------
 # Python module
 # -----------------------------------------------------------------------------
-pybind11_add_module(_cyclib
+pybind11_add_module(_cycflow
   src/module.cpp
   src/bind_core.cpp
   src/bind_buffer.cpp
@@ -45,11 +45,11 @@ pybind11_add_module(_cyclib
   src/numpy_bridge.cpp
 )
 
-target_include_directories(_cyclib PRIVATE
+target_include_directories(_cycflow PRIVATE
   ${cycflow_SOURCE_DIR}/CycLib
   src
 )
 
-target_link_libraries(_cyclib PRIVATE CycLib)
+target_link_libraries(_cycflow PRIVATE CycLib)
 
-install(TARGETS _cyclib LIBRARY DESTINATION cyclib)
+install(TARGETS _cycflow LIBRARY DESTINATION cycflow)

@@ -5,23 +5,23 @@ Both writers are background consumers attached to the same RecBuffer — they
 don't block each other and don't block the network receiver.
 """
 import time
-import cyclib
+import cycflow
 
 
 def main() -> None:
-    with cyclib.TcpDataReceiver(buffer_capacity=20_000) as rx:
+    with cycflow.TcpDataReceiver(buffer_capacity=20_000) as rx:
         if not rx.connect("127.0.0.1", 5000, "SensorStream"):
             raise SystemExit("Failed to connect")
 
         buf = rx.get_buffer()
 
         # Both writers start their own background thread.
-        cbf = cyclib.CbfWriter("session.cbf", buf,
+        cbf = cycflow.CbfWriter("session.cbf", buf,
                                auto_start=False, batch_size=1000)
         cbf.set_alias("TestRun")
         cbf.start()
 
-        csv = cyclib.CsvWriter("session.csv", buf,
+        csv = cycflow.CsvWriter("session.csv", buf,
                                auto_start=True, batch_size=500)
 
         print("Recording for 5 seconds...")

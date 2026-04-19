@@ -5,12 +5,12 @@ Useful for debugging, extracting metadata, or implementing custom readers
 that don't fit the CbfReader streaming model.
 """
 import sys
-import cyclib
+import cycflow
 
 
 def main(path: str) -> None:
-    with cyclib.CbfFile() as f:
-        if not f.open(path, cyclib.CbfMode.Read):
+    with cycflow.CbfFile() as f:
+        if not f.open(path, cycflow.CbfMode.Read):
             raise SystemExit(f"Cannot open {path}")
 
         section_index = 0
@@ -21,13 +21,13 @@ def main(path: str) -> None:
 
             print(f"[{section_index}] {header!r}")
 
-            if header.type == int(cyclib.CbfSectionType.Header):
+            if header.type == int(cycflow.CbfSectionType.Header):
                 rule = f.read_rule(header)
                 if rule is not None:
                     print(f"    Schema: {len(rule)} fields, {rule.get_rec_size()} bytes/record")
                     for attr in rule:
                         print(f"      - {attr!r}")
-            elif header.type == int(cyclib.CbfSectionType.Data):
+            elif header.type == int(cycflow.CbfSectionType.Data):
                 print(f"    Data: {header.body_length} bytes")
                 f.skip_section(header)
             else:

@@ -1,38 +1,38 @@
 """
-cyclib — Python bindings for CycFlow / CycLib.
+cycflow — Python bindings for CycFlow / CycLib.
 
 Primary usage patterns:
 
     # 1. Discovery (no background threads)
-    buffers = cyclib.TcpServiceClient.request_buffer_list("127.0.0.1", 5000)
-    rules   = cyclib.discover("127.0.0.1", 5000)
+    buffers = cycflow.TcpServiceClient.request_buffer_list("127.0.0.1", 5000)
+    rules   = cycflow.discover("127.0.0.1", 5000)
 
     # 2. Live TCP streaming (client)
-    with cyclib.TcpDataReceiver(buffer_capacity=20_000) as rx:
+    with cycflow.TcpDataReceiver(buffer_capacity=20_000) as rx:
         rx.connect("127.0.0.1", 5000, "SensorStream")
-        reader = cyclib.RecordReader(rx.get_buffer(), batch_capacity=1000)
+        reader = cycflow.RecordReader(rx.get_buffer(), batch_capacity=1000)
         while rx.is_running():
             batch = reader.next_batch_copy(1000, wait=True)
             if batch is None: break
             print(batch["Voltage"].mean())
 
     # 3. Publishing data over TCP (server)
-    rule   = cyclib.make_rule([("Voltage", cyclib.DataType.Float)])
-    buffer = cyclib.RecBuffer(rule, capacity=10_000)
-    writer = cyclib.RecordWriter(buffer, batch_capacity=1000)
-    with cyclib.TcpServer(port=5000) as srv:
+    rule   = cycflow.make_rule([("Voltage", cycflow.DataType.Float)])
+    buffer = cycflow.RecBuffer(rule, capacity=10_000)
+    writer = cycflow.RecordWriter(buffer, batch_capacity=1000)
+    with cycflow.TcpServer(port=5000) as srv:
         srv.register_buffer("SensorStream", buffer, batch_size=1000)
         # generate data in the main thread, publish via writer...
 
     # 4. Reading a .cbf file
-    arr = cyclib.read_cbf_to_array("session.cbf")
+    arr = cycflow.read_cbf_to_array("session.cbf")
 
     # 5. Dumping a RecBuffer to CSV or CBF
-    cyclib.CsvWriter("out.csv", buffer)
-    cyclib.CbfWriter("out.cbf", buffer)
+    cycflow.CsvWriter("out.csv", buffer)
+    cycflow.CbfWriter("out.cbf", buffer)
 
     # 6. Async streaming with BufferClient notifications
-    async for batch in cyclib.stream("127.0.0.1", 5000, "SensorStream"):
+    async for batch in cycflow.stream("127.0.0.1", 5000, "SensorStream"):
         ...
 """
 
@@ -41,7 +41,7 @@ from __future__ import annotations
 from typing import AsyncIterator, Iterable
 import asyncio
 
-from ._cyclib import (  # type: ignore[attr-defined]
+from ._cycflow import (  # type: ignore[attr-defined]
     # Enums / free functions
     DataType,
     get_type_size,
@@ -117,9 +117,9 @@ def make_rule(attrs: Iterable) -> RecRule:
     Build a RecRule from a list of tuples or ready-made PAttr objects.
 
     Examples:
-        cyclib.make_rule([("V", cyclib.DataType.Float)])
-        cyclib.make_rule([("Flags", cyclib.DataType.UInt8, ["tx", "rx"])])
-        cyclib.make_rule([("Arr", cyclib.DataType.Int16, 4)])
+        cycflow.make_rule([("V", cycflow.DataType.Float)])
+        cycflow.make_rule([("Flags", cycflow.DataType.UInt8, ["tx", "rx"])])
+        cycflow.make_rule([("Arr", cycflow.DataType.Int16, 4)])
     """
     pattrs = []
     for a in attrs:
@@ -170,7 +170,7 @@ def to_dataframe(src):
         arr = src.snapshot()
     elif isinstance(src, CbfReader):
         raise TypeError(
-            "For CbfReader, use cyclib.read_cbf_to_array(path) -> ndarray."
+            "For CbfReader, use cycflow.read_cbf_to_array(path) -> ndarray."
         )
     elif hasattr(src, "snapshot"):
         arr = src.snapshot()

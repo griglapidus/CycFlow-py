@@ -2,11 +2,11 @@
 Offline analysis of a .cbf file via the read_cbf_to_array helper.
 """
 import sys
-import cyclib
+import cycflow
 
 
 def main(path: str) -> None:
-    arr = cyclib.read_cbf_to_array(path, batch_capacity=10_000)
+    arr = cycflow.read_cbf_to_array(path, batch_capacity=10_000)
 
     print(f"File:   {path}")
     print(f"Dtype:  {arr.dtype}")
@@ -22,7 +22,7 @@ def main(path: str) -> None:
 
     # Optional pandas dump.
     try:
-        df = cyclib.to_dataframe(arr)
+        df = cycflow.to_dataframe(arr)
         print("\nDataFrame head:")
         print(df.head())
     except ImportError:

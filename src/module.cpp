@@ -1,5 +1,5 @@
 //
-// module.cpp — Python module entry point for _cyclib.
+// module.cpp — Python module entry point for _cycflow.
 //
 
 #include <pybind11/pybind11.h>
@@ -16,7 +16,7 @@ namespace cyclibpy {
     void bind_cbf(py::module_&);
 }
 
-PYBIND11_MODULE(_cyclib, m) {
+PYBIND11_MODULE(_cycflow, m) {
     m.doc() = "Python bindings for CycFlow / CycLib";
 
     cyclibpy::bind_core(m);     // DataType, PAttr, PReg, BitRef, RecRule, Record

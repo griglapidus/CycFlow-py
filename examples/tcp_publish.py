@@ -8,26 +8,26 @@ generate records in a loop.
 import math
 import time
 
-import cyclib
+import cycflow
 
 
 def main() -> None:
     # 1. Schema.
-    rule = cyclib.make_rule([
-        ("Counter",  cyclib.DataType.Int8, 2),   # array of 2
-        ("Voltage",  cyclib.DataType.Float),
-        ("Pressure", cyclib.DataType.Double),
+    rule = cycflow.make_rule([
+        ("Counter",  cycflow.DataType.Int8, 2),   # array of 2
+        ("Voltage",  cycflow.DataType.Float),
+        ("Pressure", cycflow.DataType.Double),
     ])
-    id_counter  = cyclib.PReg.get_id("Counter")
-    id_voltage  = cyclib.PReg.get_id("Voltage")
-    id_pressure = cyclib.PReg.get_id("Pressure")
+    id_counter  = cycflow.PReg.get_id("Counter")
+    id_voltage  = cycflow.PReg.get_id("Voltage")
+    id_pressure = cycflow.PReg.get_id("Pressure")
 
     # 2. Buffer + writer.
-    buffer = cyclib.RecBuffer(rule, capacity=10_000)
-    writer = cyclib.RecordWriter(buffer, batch_capacity=2000)
+    buffer = cycflow.RecBuffer(rule, capacity=10_000)
+    writer = cycflow.RecordWriter(buffer, batch_capacity=2000)
 
     # 3. Server.
-    with cyclib.TcpServer(port=5000) as server:
+    with cycflow.TcpServer(port=5000) as server:
         server.register_buffer("SensorStream", buffer, batch_size=1000)
         print("Publishing on tcp://127.0.0.1:5000/SensorStream ...")
 

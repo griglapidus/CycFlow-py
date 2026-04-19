@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
-import cyclib
+import cycflow
 
 
 WINDOW = 2000  # сколько последних точек показывать
@@ -18,7 +18,7 @@ WINDOW = 2000  # сколько последних точек показыват
 
 async def pump(queue: asyncio.Queue) -> None:
     """Фоновая задача: тянет батчи и складывает в очередь."""
-    async for batch in cyclib.stream("127.0.0.1", 5000, "SensorStream"):
+    async for batch in cycflow.stream("127.0.0.1", 5000, "SensorStream"):
         await queue.put(batch)
 
 

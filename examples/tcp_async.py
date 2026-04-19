@@ -2,12 +2,12 @@
 Asynchronous TCP streaming via asyncio.
 """
 import asyncio
-import cyclib
+import cycflow
 
 
 async def main() -> None:
     total = 0
-    async for batch in cyclib.stream(
+    async for batch in cycflow.stream(
         host="127.0.0.1",
         port=5000,
         buffer_name="SensorStream",
