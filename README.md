@@ -1,248 +1,299 @@
-# cycflow — Python bindings for CycFlow
+# cycflow
 
-Python bindings for [CycFlow / CycLib](https://github.com/griglapidus/CycFlow)
-covering both the client and server sides:
+> Python bindings for [CycLib](https://github.com/griglapidus/CycFlow) — a high-performance C++ library for streaming record-based data.
 
-- connect to a CycFlow server and consume live data (`TcpDataReceiver`)
-- publish data as a CycFlow server (`TcpServer` + `RecordWriter`)
-- read/write `.cbf` and `.csv` files (`CbfReader`, `CbfWriter`, `CsvWriter`, `CbfFile`)
-- subclass `RecordProducer` / `RecordConsumer` in pure Python
+![Python](https://img.shields.io/badge/python-3.9%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![NumPy](https://img.shields.io/badge/numpy-1.22%2B-orange)
+
+`cycflow` lets you produce, consume, and analyze continuous typed data streams with **zero-copy NumPy integration**, **live TCP networking**, and **CBF file I/O** — all from Python.
+
+---
+
+## Features
+
+- **Zero-copy reads** — `RecordReader.next_batch()` returns a NumPy structured array view directly into the ring buffer
+- **Zero-copy writes** — fill a writable NumPy batch and commit it in one call
+- **TCP streaming** — connect to remote CycFlow servers or publish your own streams to multiple clients
+- **Python subclassing** — implement producers and consumers in pure Python via pybind11 trampolines
+- **CBF / CSV file I/O** — read and write the CycFlow Binary Format with background-thread writers
+- **asyncio support** — `async for` generator over live TCP streams
+- **Bit fields** — named bits inside integer fields with typed accessors
+- **Pandas integration** — convert buffers and CBF files to DataFrames in one line
+
+---
 
 ## Installation
 
 ```bash
 pip install .
-# iterative development:
+```
+
+Development mode:
+
+```bash
 pip install -e . --no-build-isolation
 ```
 
-## API overview
+With optional extras:
 
-### Core
+```bash
+pip install .[plot]   # pandas + matplotlib
+pip install .[dev]    # pytest + pytest-asyncio
+```
 
-| Python | C++ | Purpose |
-|---|---|---|
-| `DataType` | `cyc::DataType` | Enum: `Undefine, Bool, Char, Void, Int8..UInt64, Float, Double, Ptr` |
-| `PAttr(name, type, count=1)` | `cyc::PAttr` | Plain field (name ≤ 25 chars) |
-| `PAttr(name, type, bit_defs)` | `cyc::PAttr` | Integer field with named bits |
-| `PReg` | `cyc::PReg` | Global name → id registry |
-| `BitRef` | `cyc::BitRef` | `{field_id, bit_pos}` |
-| `RecRule` | `cyc::RecRule` | Schema, `.to_text()/.from_text()` |
-| `Record` | `cyc::Record` | View over a record (typed + generic + bit API) |
+**Build requirements:** CMake ≥ 3.15, a C++17 compiler, pybind11 ≥ 3.0.0, scikit-build-core ≥ 0.10.
 
-### Buffering & I/O
+---
 
-| Python | C++ | Purpose |
-|---|---|---|
-| `BufferClient(cb)` | `cyc::IRecBufferClient` | Notification subscriber |
-| `RecBuffer` | `cyc::RecBuffer` | Ring buffer of records |
-| `RecordBatch` | `RecordReader::RecordBatch` | Read-only contiguous block |
-| `RecordReader` | `cyc::RecordReader` | `next_record/next_batch/next_batch_copy` |
-| `WriteBatch` | `RecordWriter::RecordBatch` | Writable contiguous block |
-| `RecordWriter` | `cyc::RecordWriter` | Double-buffered writer |
-| `RecordProducer` | `cyc::RecordProducer` | **Python-subclassable** abstract producer |
-| `BatchRecordProducer` | `cyc::BatchRecordProducer` | **Python-subclassable** bulk producer |
-| `RecordConsumer` | `cyc::RecordConsumer` | **Python-subclassable** abstract consumer |
-| `BatchRecordConsumer` | `cyc::BatchRecordConsumer` | **Python-subclassable** bulk consumer |
+## Quick Start
 
-### TCP
-
-| Python | C++ | Purpose |
-|---|---|---|
-| `TcpServiceClient.request_buffer_list(host, port)` | `cyc::TcpServiceClient` | Discovery |
-| `TcpServiceClient.request_rec_rule(host, port, name)` | `cyc::TcpServiceClient` | Schema lookup |
-| `TcpDataReceiver(buffer_capacity, writer_batch_size)` | `cyc::TcpDataReceiver` | Client |
-| `TcpServer(port)` | `cyc::TcpServer` (+ owned io_context/thread) | Server |
-
-### CBF / CSV
-
-| Python | C++ | Purpose |
-|---|---|---|
-| `CbfReader(path, ...)` | `cyc::CbfReader` | Streaming offline reader |
-| `CbfWriter(path, buffer, ...)` | `cyc::CbfWriter` | Async CBF writer |
-| `CsvWriter(path, buffer, ...)` | `cyc::CsvWriter` | Async CSV writer |
-| `CbfFile` | `cyc::CbfFile` | Low-level section-by-section API |
-| `CbfMode`, `CbfSectionType`, `CbfSectionHeader`, `CBF_SECTION_MARKER` | — | Low-level types |
-| `read_cbf_to_array(path)` | — (helper) | Whole file → one numpy array |
-
-### Python helpers
-
-| Function | Purpose |
-|---|---|
-| `make_rule(attrs)` | Tuple-based `RecRule` factory (arrays, bit_defs supported) |
-| `discover(host, port)` | `{buffer_name: RecRule}` |
-| `to_dataframe(src)` | numpy / `RecBuffer` → `pandas.DataFrame` |
-| `publish_dataframe(df, writer)` | Bulk DataFrame → `RecordWriter` via zero-copy batch fill |
-| `stream(host, port, name, ...)` | `asyncio` generator of numpy batches |
-
-## Quick start
-
-### 1. Connect and consume
+### Connect and consume a stream
 
 ```python
-import cyclib
-with cyclib.TcpDataReceiver(buffer_capacity=20_000) as rx:
+import cycflow
+
+with cycflow.TcpDataReceiver(buffer_capacity=20_000) as rx:
     rx.connect("127.0.0.1", 5000, "SensorStream")
-    reader = cyclib.RecordReader(rx.get_buffer(), batch_capacity=1000)
-    for _ in range(5):
-        batch = reader.next_batch_copy(1000)
-        if batch is None: break
+    reader = cycflow.RecordReader(rx.get_buffer(), batch_capacity=1000)
+
+    batch = reader.next_batch_copy(1000)   # safe copy
+    if batch is not None:
         print(batch["Voltage"].mean())
 ```
 
-### 2. Publish as a server
+### Publish a stream
 
 ```python
-import cyclib, math, time
+import math, cycflow
 
-rule = cyclib.make_rule([
-    ("Voltage",  cyclib.DataType.Float),
-    ("Pressure", cyclib.DataType.Double),
+rule = cycflow.make_rule([
+    ("Voltage",  cycflow.DataType.Float),
+    ("Pressure", cycflow.DataType.Double),
 ])
-buffer = cyclib.RecBuffer(rule, capacity=10_000)
-writer = cyclib.RecordWriter(buffer, batch_capacity=1000)
-idV = cyclib.PReg.get_id("Voltage")
-idP = cyclib.PReg.get_id("Pressure")
+buffer = cycflow.RecBuffer(rule, capacity=10_000)
+writer = cycflow.RecordWriter(buffer, batch_capacity=1000)
+idV    = cycflow.PReg.get_id("Voltage")
+idP    = cycflow.PReg.get_id("Pressure")
 
-with cyclib.TcpServer(port=5000) as server:
+with cycflow.TcpServer(port=5000) as server:
     server.register_buffer("SensorStream", buffer, batch_size=500)
     for i in range(100_000):
         rec = writer.next_record()
-        rec.set_float(idV, 12.0 + math.sin(i*0.01))
+        rec.set_float(idV,  12.0 + math.sin(i * 0.01))
         rec.set_double(idP, 101.3)
         writer.commit_record()
         if i % 1000 == 0:
             writer.flush()
 ```
 
-### 3. Record a stream to files
+### Implement a producer in Python
 
 ```python
-cbf = cyclib.CbfWriter("session.cbf", buf); cbf.set_alias("TestRun")
-csv = cyclib.CsvWriter("session.csv", buf)
-# ... both run on background threads
-cbf.finish(); csv.finish()
-```
+import numpy as np, cycflow
 
-### 4. Subclass in Python
-
-```python
-class Sine(cyclib.BatchRecordProducer):
+class SineProducer(cycflow.BatchRecordProducer):
     def define_rule(self):
-        return cyclib.make_rule([("X", cyclib.DataType.Float)])
+        return cycflow.make_rule([("X", cycflow.DataType.Float)])
+
     def produce_batch(self, batch):
         arr = batch.as_numpy()
         arr["X"] = np.linspace(0, 1, len(arr), dtype="f4")
         return len(arr)
 
-p = Sine(buffer_capacity=10_000, writer_batch_size=1000)
-p.start()
+producer = SineProducer(buffer_capacity=10_000, writer_batch_size=1000)
+producer.start()
 ```
 
-### 5. Async streaming
+### Async streaming
 
 ```python
-import asyncio, cyclib
+import asyncio, cycflow
 
 async def main():
-    async for batch in cyclib.stream("127.0.0.1", 5000, "SensorStream"):
+    async for batch in cycflow.stream("127.0.0.1", 5000, "SensorStream"):
         print(batch["Voltage"].mean())
 
 asyncio.run(main())
 ```
 
-### 6. Bit fields
+### Record a stream to CBF and CSV
 
 ```python
-rule = cyclib.make_rule([
-    ("StatusReg", cyclib.DataType.UInt8, ["tx", "rx", "4", "errFlag"]),
+cbf = cycflow.CbfWriter("session.cbf", buffer)
+csv = cycflow.CsvWriter("session.csv", buffer)
+# ... both write in background threads
+cbf.finish()
+csv.finish()
+```
+
+### Read a CBF file
+
+```python
+arr = cycflow.read_cbf_to_array("session.cbf")
+df  = cycflow.to_dataframe(arr)
+print(df.describe())
+```
+
+### Bit fields
+
+```python
+rule = cycflow.make_rule([
+    ("StatusReg", cycflow.DataType.UInt8, ["tx", "rx", "4", "errFlag"]),
 ])
 rec = reader.next_record()
-print(rec.get_bit(cyclib.PReg.get_id("tx")))
+print(rec.get_bit(cycflow.PReg.get_id("tx")))
 ```
 
-### 7. DataFrame → TCP in one line
-
-```python
-cyclib.publish_dataframe(my_df, writer)
-```
-
-### 8. Low-level CBF inspection
-
-```python
-with cyclib.CbfFile() as f:
-    f.open("session.cbf", cyclib.CbfMode.Read)
-    while (h := f.read_section_header()) is not None:
-        print(h)
-        if h.type == int(cyclib.CbfSectionType.Header):
-            rule = f.read_rule(h)
-            print([a.name for a in rule])
-        else:
-            f.skip_section(h)
-```
-
-## Type mapping
-
-| CycLib | C++ | NumPy | In dtype |
-|---|---|---|---|
-| `dtUndefine` | — | — | ✗ |
-| `dtBool` | `bool` | `?` | ✓ |
-| `dtChar` | `char` | `S1` | ✓ |
-| `dtVoid` | — | — | ✗ |
-| `dtInt8..Int64` | `int8_t..int64_t` | `<i1..<i8` | ✓ |
-| `dtUInt8..UInt64` | `uint8_t..uint64_t` | `<u1..<u8` | ✓ |
-| `dtFloat` | `float` | `<f4` | ✓ |
-| `dtDouble` | `double` | `<f8` | ✓ |
-| `dtPtr` | `void*` | — | ✗ (intentional) |
-
-Array fields (`count > 1`) become subarray dtype: `("<f4", (N,))`.
-Fields with bit_defs are represented as their containing integer; individual
-bits are accessed via `Record.get_bit(PReg.get_id(name))`.
+---
 
 ## Architecture
 
 ```
-        ┌──────────────────────────┐
-        │  Python producer class   │   (subclass of BatchRecordProducer)
-        └────────────┬─────────────┘
-                     │ define_rule / produce_batch
-        ┌────────────▼──────────────┐
-        │       RecordWriter        │───push──► RecBuffer ──┬─► RecordReader ─► numpy/pandas
-        └───────────────────────────┘                       ├─► CbfWriter
-                     ▲                                      ├─► CsvWriter
-                     │                                      └─► TcpServer ── TCP ──► receiver
-        ┌────────────┴──────────────┐
-        │       TcpDataReceiver     │◄── TCP ──  (remote server)
-        └───────────────────────────┘
+┌──────────────────────────┐
+│  Python producer class   │   (subclass BatchRecordProducer)
+└────────────┬─────────────┘
+             │ define_rule / produce_batch
+┌────────────▼──────────────┐
+│       RecordWriter        │───push──► RecBuffer ──┬─► RecordReader ─► numpy/pandas
+└───────────────────────────┘                       ├─► CbfWriter
+             ▲                                      ├─► CsvWriter
+             │                                      └─► TcpServer ── TCP ──► client
+┌────────────┴──────────────┐
+│       TcpDataReceiver     │◄── TCP ──  (remote CycFlow server)
+└───────────────────────────┘
 ```
 
-- **Zero-copy read**: `RecordReader.next_batch()` returns a numpy view.
-  Valid until the next call on the same reader.
-- **Zero-copy write**: `RecordWriter.next_batch().as_numpy()` returns a writable
-  numpy view. Fill, then `commit_batch(count)`.
-- **Safe copies**: `RecBuffer.snapshot()`, `RecordReader.next_batch_copy()`,
-  `read_cbf_to_array()`.
+**Zero-copy read:** `RecordReader.next_batch()` returns a NumPy view valid until the next call on the same reader.
+
+**Zero-copy write:** `RecordWriter.next_batch().as_numpy()` returns a writable NumPy view; call `commit_batch(n)` when done.
+
+**Safe copies:** `RecBuffer.snapshot()`, `RecordReader.next_batch_copy()`, `read_cbf_to_array()`.
+
+---
+
+## API Reference
+
+### Core types
+
+| Class | Description |
+|---|---|
+| `DataType` | Enum of field types: `Bool`, `Char`, `Int8`…`UInt64`, `Float`, `Double` |
+| `PAttr(name, type, count=1)` | Plain field descriptor |
+| `PAttr(name, type, bit_defs)` | Integer field with named bits |
+| `PReg` | Global field-name ↔ ID registry (`PReg.get_id(name)`) |
+| `RecRule` | Schema: ordered list of `PAttr`, computed offsets and record size |
+| `Record` | Single-record accessor (`get_float`, `set_double`, `get_bit`, …) |
+
+### Buffers and I/O
+
+| Class | Description |
+|---|---|
+| `RecBuffer(rule, capacity)` | Ring buffer of typed records |
+| `RecordReader(buffer, batch_capacity)` | Read batches; `next_batch()` → zero-copy view, `next_batch_copy()` → safe copy |
+| `RecordWriter(buffer, batch_capacity)` | Write records with `next_record()` / `commit_record()` or batch API |
+| `WriteBatch` | Writable NumPy batch returned by `writer.next_batch()` |
+| `BufferClient(callback)` | Notification subscriber for buffer events |
+
+### Producers and consumers
+
+| Class | Description |
+|---|---|
+| `BatchRecordProducer` | Subclass and implement `define_rule()` + `produce_batch(batch)` |
+| `RecordProducer` | Subclass and implement `define_rule()` + `produce_record(rec)` |
+| `BatchRecordConsumer` | Background consumer — implement `consume_batch(batch)` |
+| `RecordConsumer` | Background consumer — implement `consume_record(rec)` |
+
+### TCP networking
+
+| Symbol | Description |
+|---|---|
+| `TcpServer(port)` | Serve one or more buffers to multiple simultaneous clients |
+| `TcpDataReceiver(buffer_capacity)` | Connect to a server and stream records into a local buffer |
+| `TcpServiceClient` | Discover available buffers (`request_buffer_list`) and fetch schemas (`request_rec_rule`) |
+| `cycflow.discover(host, port)` | One-shot helper → `{buffer_name: RecRule}` |
+| `cycflow.stream(host, port, name)` | Async generator yielding NumPy batches |
+
+### File I/O
+
+| Symbol | Description |
+|---|---|
+| `CbfWriter(path, buffer)` | Background-thread CBF writer attached to a buffer |
+| `CsvWriter(path, buffer)` | Background-thread CSV writer attached to a buffer |
+| `CbfReader(path)` | Sequential streaming CBF reader |
+| `CbfFile` | Low-level CBF section-by-section inspector |
+| `read_cbf_to_array(path)` | Load an entire CBF file into a NumPy structured array |
+
+### Python helpers
+
+| Function | Description |
+|---|---|
+| `make_rule(fields)` | Build a `RecRule` from `[(name, dtype), …]` or `[(name, dtype, count), …]` |
+| `discover(host, port)` | List remote buffers and their schemas |
+| `to_dataframe(array)` | Convert a NumPy structured array or `RecBuffer` to a pandas DataFrame |
+| `publish_dataframe(df, writer)` | Push a DataFrame into a `RecordWriter` via zero-copy batch fill |
+| `stream(host, port, name)` | Async generator over a live TCP stream |
+
+---
+
+## NumPy type mapping
+
+| `DataType` | NumPy dtype | In structured array |
+|---|---|---|
+| `Bool` | `?` | ✓ |
+| `Char` | `S1` | ✓ |
+| `Int8` / `UInt8` | `<i1` / `<u1` | ✓ |
+| `Int16` / `UInt16` | `<i2` / `<u2` | ✓ |
+| `Int32` / `UInt32` | `<i4` / `<u4` | ✓ |
+| `Int64` / `UInt64` | `<i8` / `<u8` | ✓ |
+| `Float` | `<f4` | ✓ |
+| `Double` | `<f8` | ✓ |
+| `Ptr` | — | ✗ (never exposed) |
+
+Array fields (`count > 1`) become subarray dtypes, e.g. `("<f4", (3,))`.
+Bit-field integers appear as their containing integer type; individual bits are accessed via `Record.get_bit(PReg.get_id(name))`.
+
+---
 
 ## Examples
 
-- `examples/tcp_sync.py` — discovery + synchronous client
-- `examples/tcp_async.py` — asyncio streaming client
-- `examples/tcp_publish.py` — TCP server that publishes sensor data
-- `examples/python_producer.py` — `BatchRecordProducer` subclass
-- `examples/python_consumer.py` — `RecordConsumer` subclass (running stats)
-- `examples/record_to_file.py` — dump TCP stream to CBF + CSV simultaneously
-- `examples/read_cbf.py` — offline analysis of a `.cbf` file
-- `examples/cbf_inspect.py` — low-level section-by-section CBF walker
-- `examples/bit_fields.py` — named bits inside integer fields
+| File | Description |
+|---|---|
+| [`tcp_sync.py`](examples/tcp_sync.py) | Service discovery + synchronous client |
+| [`tcp_async.py`](examples/tcp_async.py) | asyncio streaming client |
+| [`tcp_publish.py`](examples/tcp_publish.py) | TCP server broadcasting sensor data |
+| [`python_producer.py`](examples/python_producer.py) | `BatchRecordProducer` subclass (sine wave) |
+| [`python_consumer.py`](examples/python_consumer.py) | `RecordConsumer` subclass with running stats |
+| [`record_to_file.py`](examples/record_to_file.py) | Dump a live TCP stream to CBF + CSV simultaneously |
+| [`read_cbf.py`](examples/read_cbf.py) | Offline CBF analysis |
+| [`cbf_inspect.py`](examples/cbf_inspect.py) | Low-level CBF section walker |
+| [`bit_fields.py`](examples/bit_fields.py) | Named bits inside integer fields |
+| [`live_plot.py`](examples/live_plot.py) | Real-time matplotlib animation |
+| [`test_server.py`](examples/test_server.py) | Python port of `CycTestServer` — synthetic multi-channel stream on port 5000 (~4k records/sec); use as a data source when testing other examples |
 
-## Limitations
+---
+
+## Testing
+
+```bash
+pytest tests/
+pytest tests/test_core.py -v    # schema, record, and buffer tests
+pytest tests/test_cbf.py  -v    # CBF file write/read round-trips
+pytest tests/test_csv.py  -v    # CSV formatting and appending
+pytest tests/test_tcp.py  -v    # TCP discovery and streaming
+```
+
+---
+
+## Known limitations
 
 - `dtPtr` is never exposed across the Python boundary.
-- `dtChar` fields surface as `S1` in numpy; decode with `bytes().decode()` as needed.
-- `Record` holds a reference to the owning `RecRule` — don't outlive the parent reader.
-- `TcpServer` uses its own owned ASIO `io_context`; if you need to share one with other
-  C++ components, modify `PyTcpServer` in `bind_server.cpp`.
+- `dtChar` surfaces as `S1` in NumPy; decode with `bytes.decode()` as needed.
+- `Record` holds a reference to its owning `RecRule` — don't outlive the parent reader.
+- `TcpServer` owns its ASIO `io_context`; to share one with other C++ components, modify `PyTcpServer` in `src/bind_server.cpp`.
+
+---
 
 ## License
 
-MIT.
+[MIT](LICENSE.txt) — © 2026 Grigorii Lapidus
