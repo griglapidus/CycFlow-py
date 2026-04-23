@@ -112,14 +112,23 @@ __all__ = [
 # Factories
 # ---------------------------------------------------------------------------
 
-def make_rule(attrs: Iterable) -> RecRule:
+def make_rule(attrs: Iterable, *, align: bool = False) -> RecRule:
     """
     Build a RecRule from a list of tuples or ready-made PAttr objects.
+
+    Args:
+        attrs: Iterable of PAttr objects or tuples. Tuples can be:
+               - (name, DataType)
+               - (name, DataType, count_or_bit_defs)
+        align: When True, fields are stably sorted by decreasing element
+               size for natural alignment, and trailing padding is appended
+               so that packed record arrays stay aligned. Default False
+               preserves the historical tightly-packed layout.
 
     Examples:
         cycflow.make_rule([("V", cycflow.DataType.Float)])
         cycflow.make_rule([("Flags", cycflow.DataType.UInt8, ["tx", "rx"])])
-        cycflow.make_rule([("Arr", cycflow.DataType.Int16, 4)])
+        cycflow.make_rule([("Arr", cycflow.DataType.Int16, 4)], align=True)
     """
     pattrs = []
     for a in attrs:
@@ -138,7 +147,7 @@ def make_rule(attrs: Iterable) -> RecRule:
             raise ValueError(f"Unsupported attr spec: {a!r}")
 
     rule = RecRule()
-    rule.init(pattrs)
+    rule.init(pattrs, align)
     return rule
 
 

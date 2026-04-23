@@ -1,6 +1,6 @@
 //
 // bind_core.cpp — Common (DataType), PAttr, PReg, RecRule, BitRef, Record.
-// All signatures verified against Core/*.h.
+// All signatures verified against Core/*.h (develop @ be6d78a).
 //
 
 #include <pybind11/pybind11.h>
@@ -108,8 +108,14 @@ void bind_core(py::module_& m) {
     // ----- RecRule -----------------------------------------------------------
     py::class_<cyc::RecRule>(m, "RecRule", "CycLib record schema")
         .def(py::init<>())
-        .def(py::init<const std::vector<cyc::PAttr>&>(), py::arg("attrs"))
-        .def("init",              &cyc::RecRule::init,          py::arg("attrs"))
+        .def(py::init<const std::vector<cyc::PAttr>&, bool>(),
+             py::arg("attrs"), py::arg("align") = false,
+             "Construct a rule. When align=True fields are sorted by "
+             "decreasing element size and trailing padding is added so "
+             "every field sits on a naturally-aligned boundary.")
+        .def("init",              &cyc::RecRule::init,
+             py::arg("attrs"), py::arg("align") = false,
+             "Initialise the rule. See constructor for `align` semantics.")
         .def("build_header",      &cyc::RecRule::buildHeader)
         .def("get_rec_size",      &cyc::RecRule::getRecSize)
         .def("get_offset_by_index", &cyc::RecRule::getOffsetByIndex, py::arg("index"))
@@ -144,7 +150,20 @@ void bind_core(py::module_& m) {
 
     rec.def("is_valid", &cyc::Record::isValid)
        .def("clear",    &cyc::Record::clear)
-       .def("get_size", &cyc::Record::getSize);
+       .def("get_size", &cyc::Record::getSize)
+       .def("set_data",
+            [](cyc::Record& r, py::buffer buf) {
+                py::buffer_info info = buf.request(true);
+                r.setData(info.ptr);
+            },
+            py::arg("buffer"),
+            "Point the record at a new memory block (e.g. a numpy array). "
+            "The buffer must remain alive while the record is in use.")
+       .def("data_ptr",
+            [](const cyc::Record& r) -> uintptr_t {
+                return reinterpret_cast<uintptr_t>(r.data());
+            },
+            "Return the raw data pointer as an integer (for advanced use).");
 
     // Generic double-based getter/setter — the primary API for generic
     // Python code that doesn't care about the underlying type.

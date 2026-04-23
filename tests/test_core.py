@@ -48,6 +48,40 @@ class TestRecRule:
         assert rule.get_offset_by_id(id_dbl) == HEADER_SIZE + 4
         assert rule.get_offset_by_id(id_str) == HEADER_SIZE + 12
 
+    def test_aligned_layout(self):
+        """When align=True, fields should be sorted by decreasing element size
+        and the total record size should be padded to a multiple of the
+        largest element size."""
+        attrs = [
+            cycflow.PAttr("SmallVal", cycflow.DataType.Int8),
+            cycflow.PAttr("BigVal",   cycflow.DataType.Double),
+            cycflow.PAttr("MedVal",   cycflow.DataType.Int32),
+        ]
+        rule = cycflow.RecRule(attrs, align=True)
+
+        id_big   = cycflow.PReg.get_id("BigVal")
+        id_med   = cycflow.PReg.get_id("MedVal")
+        id_small = cycflow.PReg.get_id("SmallVal")
+
+        # In aligned mode, Double (8) comes first, then Int32 (4), then Int8 (1).
+        # Header is Double (8 bytes).
+        # Layout: [Header:8][BigVal:8][MedVal:4][SmallVal:1] + padding to 8-byte boundary
+        assert rule.get_offset_by_id(id_big) == HEADER_SIZE
+        assert rule.get_offset_by_id(id_med) == HEADER_SIZE + 8
+        assert rule.get_offset_by_id(id_small) == HEADER_SIZE + 12
+
+        # Record size should be a multiple of the largest element size (8)
+        assert rule.get_rec_size() % 8 == 0
+
+    def test_make_rule_align(self):
+        """make_rule() helper should pass align to RecRule."""
+        rule = cycflow.make_rule(
+            [("X", cycflow.DataType.Int8), ("Y", cycflow.DataType.Double)],
+            align=True,
+        )
+        # Aligned: Double first (size 8), then Int8 (size 1) + padding
+        assert rule.get_rec_size() % 8 == 0
+
 
 # ---------------------------------------------------------------------------
 # Record

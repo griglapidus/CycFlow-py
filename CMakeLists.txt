@@ -26,7 +26,7 @@ set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
   cycflow
   GIT_REPOSITORY https://github.com/griglapidus/CycFlow.git
-  GIT_TAG        v0.2.0
+  GIT_TAG        v0.3.0
 )
 FetchContent_MakeAvailable(cycflow)
 
