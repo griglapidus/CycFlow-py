@@ -1,9 +1,10 @@
 //
-// bind_server.cpp — TcpServer.
+// bind_server.cpp — TcpServer + TcpServerManager (new in v0.4.0).
 //
-// TcpServer requires an external asio::io_context. To make it usable from
-// Python without leaking ASIO into the public API, we provide a thin wrapper
-// (PyTcpServer) that owns its io_context and a dedicated I/O thread.
+// TcpServer requires an external asio::io_context. The PyTcpServer wrapper
+// owns its io_context and a dedicated I/O thread so Python users do not need
+// to deal with ASIO directly. PyTcpServerManager exposes the C++ singleton
+// (which has the same internal layout) under a stable Python-friendly facade.
 //
 
 #include <pybind11/pybind11.h>
@@ -15,13 +16,15 @@
 
 #include "Core/RecBuffer.h"
 #include "Tcp/TcpServer.h"
+#include "Tcp/TcpServerManager.h"
 
 namespace py = pybind11;
 
 namespace cyclibpy {
 
-// Wrapper that owns an io_context, a work_guard, and an I/O thread.
-// This matches the pattern from the CycFlow README server example.
+// ---------------------------------------------------------------------------
+// PyTcpServer — owns its own io_context, work_guard, and I/O thread.
+// ---------------------------------------------------------------------------
 class PyTcpServer {
 public:
     PyTcpServer(uint16_t port)
@@ -38,18 +41,21 @@ public:
         m_server->registerBuffer(name, std::move(buffer), batch_size);
     }
 
+    void unregister_buffer(const std::string& name) {
+        m_server->unregisterBuffer(name);
+    }
+
     void start() {
-        if (m_running.exchange(true)) return;  // idempotent
+        if (m_running.exchange(true)) return;
         m_server->start();
-        // Run io_context on a dedicated thread so Python keeps control.
         m_io_thread = std::thread([this]() {
-            try { m_io.run(); } catch (...) { /* swallow: logged elsewhere */ }
+            try { m_io.run(); } catch (...) { /* swallow */ }
         });
     }
 
     void stop() {
         if (!m_running.exchange(false)) return;
-        m_work.reset();    // let run() return once all work is done
+        m_work.reset();
         m_io.stop();
         if (m_io_thread.joinable()) m_io_thread.join();
     }
@@ -65,6 +71,53 @@ private:
 };
 
 
+// ---------------------------------------------------------------------------
+// PyTcpServerManager — thin facade around the C++ singleton.
+//
+// Holds no per-instance state; every call dispatches to
+// cyc::TcpServerManager::instance(). Python only ever sees a single
+// `TcpServerManager` instance returned by `TcpServerManager.instance()`.
+// ---------------------------------------------------------------------------
+class PyTcpServerManager {
+public:
+    static PyTcpServerManager& instance() {
+        static PyTcpServerManager inst;
+        return inst;
+    }
+
+    void start(uint16_t port) {
+        cyc::TcpServerManager::instance().start(port);
+    }
+
+    void stop() {
+        cyc::TcpServerManager::instance().stop();
+    }
+
+    bool is_running() const {
+        return cyc::TcpServerManager::instance().isRunning();
+    }
+
+    void register_buffer(const std::string& name,
+                         std::shared_ptr<cyc::RecBuffer> buffer,
+                         std::size_t batch_size) {
+        auto* srv = cyc::TcpServerManager::instance().server();
+        if (!srv) throw std::runtime_error(
+            "TcpServerManager: server is not running — call start() first.");
+        srv->registerBuffer(name, std::move(buffer), batch_size);
+    }
+
+    void unregister_buffer(const std::string& name) {
+        auto* srv = cyc::TcpServerManager::instance().server();
+        if (!srv) throw std::runtime_error(
+            "TcpServerManager: server is not running — call start() first.");
+        srv->unregisterBuffer(name);
+    }
+
+private:
+    PyTcpServerManager() = default;
+};
+
+
 void bind_server(py::module_& m) {
     py::class_<PyTcpServer>(m, "TcpServer",
         "CycFlow TCP server. Owns its own ASIO io_context and worker thread; "
@@ -74,9 +127,15 @@ void bind_server(py::module_& m) {
         .def("register_buffer",
              &PyTcpServer::register_buffer,
              py::arg("name"), py::arg("buffer"), py::arg("batch_size") = 1000,
-             // keep the RecBuffer alive as long as the server holds it
              py::keep_alive<1, 3>(),
              "Expose a RecBuffer under `name` to connecting clients.")
+
+        .def("unregister_buffer",
+             &PyTcpServer::unregister_buffer,
+             py::arg("name"),
+             py::call_guard<py::gil_scoped_release>(),
+             "Remove the buffer and synchronously close every active "
+             "client session serving it.")
 
         .def("start", &PyTcpServer::start,
              py::call_guard<py::gil_scoped_release>(),
@@ -88,7 +147,6 @@ void bind_server(py::module_& m) {
 
         .def("is_running", &PyTcpServer::is_running)
 
-        // Context-manager for convenient cleanup.
         .def("__enter__", [](py::object self) {
             self.attr("start")();
             return self;
@@ -98,6 +156,32 @@ void bind_server(py::module_& m) {
             s.stop();
             return false;
         });
+
+    // ----- TcpServerManager singleton ----------------------------------------
+    // py::nodelete keeps Python from destroying the singleton on GC.
+    py::class_<PyTcpServerManager,
+               std::unique_ptr<PyTcpServerManager, py::nodelete>>(
+        m, "TcpServerManager",
+        "Global singleton that owns one TcpServer + io_context. "
+        "Use TcpServerManager.instance() to get the singleton.")
+        .def_static("instance", &PyTcpServerManager::instance,
+                    py::return_value_policy::reference)
+        .def("start", &PyTcpServerManager::start, py::arg("port") = 5000,
+             py::call_guard<py::gil_scoped_release>(),
+             "Start the singleton server. Idempotent.")
+        .def("stop", &PyTcpServerManager::stop,
+             py::call_guard<py::gil_scoped_release>(),
+             "Stop the server. Idempotent. start() may be called again "
+             "afterwards, possibly with a different port.")
+        .def("is_running", &PyTcpServerManager::is_running)
+        .def("register_buffer", &PyTcpServerManager::register_buffer,
+             py::arg("name"), py::arg("buffer"), py::arg("batch_size") = 1000,
+             py::keep_alive<1, 3>(),
+             "Publish a RecBuffer. Raises if the server is not running.")
+        .def("unregister_buffer", &PyTcpServerManager::unregister_buffer,
+             py::arg("name"),
+             py::call_guard<py::gil_scoped_release>(),
+             "Remove a previously published buffer and close active sessions.");
 }
 
 } // namespace cyclibpy

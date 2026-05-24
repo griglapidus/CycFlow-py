@@ -2,8 +2,8 @@
 // bind_cbf.cpp — CbfReader + low-level CbfFile, CbfMode, CbfSectionType,
 // CbfSectionHeader.
 //
-// High-level flow: use read_cbf_to_array(path) or cyclib.CbfReader.
-// Low-level flow: use CbfFile directly for section-by-section inspection.
+// v0.4.0: CbfReader's template constructor accepts a UseWriter tag for
+// picking the writer implementation. Expose via a `use_zc` boolean argument.
 //
 
 #include <pybind11/pybind11.h>
@@ -19,6 +19,8 @@
 #include "Cbf/CbfDefs.h"
 #include "RecordProducer.h"
 #include "RecordReader.h"
+#include "RecordWriter.h"
+#include "RecordWriterZC.h"
 
 #include "numpy_bridge.h"
 
@@ -35,7 +37,7 @@ void bind_cbf(py::module_& m) {
 
     m.attr("CBF_SECTION_MARKER") = py::int_(cyc::CBF_SECTION_MARKER);
 
-    // ----- CbfSectionHeader (read-only view) --------------------------------
+    // ----- CbfSectionHeader --------------------------------------------------
     py::class_<cyc::CbfSectionHeader>(m, "CbfSectionHeader",
         "Metadata prefixing every CBF section (24 bytes, packed).")
         .def(py::init<>())
@@ -71,14 +73,12 @@ void bind_cbf(py::module_& m) {
         .def("is_open", &cyc::CbfFile::isOpen)
         .def("is_good", &cyc::CbfFile::isGood)
 
-        // Write API
         .def("set_alias",           &cyc::CbfFile::setAlias, py::arg("alias"))
         .def("write_header",        &cyc::CbfFile::writeHeader, py::arg("rule"))
         .def("begin_data_section",  &cyc::CbfFile::beginDataSection)
         .def("write_record",        &cyc::CbfFile::writeRecord, py::arg("record"))
         .def("end_data_section",    &cyc::CbfFile::endDataSection)
 
-        // Read API
         .def("read_section_header",
             [](cyc::CbfFile& f) -> py::object {
                 cyc::CbfSectionHeader h;
@@ -96,7 +96,6 @@ void bind_cbf(py::module_& m) {
         .def("read_record", &cyc::CbfFile::readRecord, py::arg("record"))
         .def("skip_section", &cyc::CbfFile::skipSection, py::arg("section_header"))
 
-        // Context-manager
         .def("__enter__", [](py::object self) { return self; })
         .def("__exit__",  [](cyc::CbfFile& f, py::object, py::object, py::object) {
             f.close();
@@ -109,12 +108,21 @@ void bind_cbf(py::module_& m) {
         "data is read into a background RecBuffer and accessed via "
         "get_buffer() plus a RecordReader.")
 
-        .def(py::init<const std::string&, std::size_t, bool, std::size_t>(),
-             py::arg("filename"),
-             py::arg("buffer_capacity")   = 100000,
-             py::arg("auto_start")        = true,
-             py::arg("writer_batch_size") = 1000,
-             py::call_guard<py::gil_scoped_release>())
+        .def(py::init(
+            [](const std::string& fn, std::size_t cap, bool auto_start,
+               std::size_t batch, bool use_zc) {
+                return use_zc
+                    ? new cyc::CbfReader(cyc::UseWriter<cyc::RecordWriterZC>{},
+                                         fn, cap, auto_start, batch)
+                    : new cyc::CbfReader(fn, cap, auto_start, batch);
+            }),
+            py::arg("filename"),
+            py::arg("buffer_capacity")   = 100000,
+            py::arg("auto_start")        = true,
+            py::arg("writer_batch_size") = 1000,
+            py::arg("use_zc")            = false,
+            py::call_guard<py::gil_scoped_release>(),
+            "use_zc=True picks RecordWriterZC for the local buffer.")
 
         .def("is_valid", &cyc::CbfReader::isValid)
         .def("start",      &cyc::RecordProducer::start,
