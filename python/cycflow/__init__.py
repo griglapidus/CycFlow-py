@@ -27,9 +27,10 @@ Primary usage patterns:
     # 4. Reading a .cbf file
     arr = cycflow.read_cbf_to_array("session.cbf")
 
-    # 5. Dumping a RecBuffer to CSV or CBF
-    cycflow.CsvWriter("out.csv", buffer)
-    cycflow.CbfWriter("out.cbf", buffer)
+    # 5. Dumping a RecBuffer to CSV or CBF (with optional file rotation)
+    cycflow.CsvWriter("out.csv", buffer, max_records=100_000)   # auto-rotate
+    cycflow.CbfWriter("out.cbf", buffer, max_records=100_000)
+    writer.restart()  # manual rotation at any time
 
     # 6. Async streaming with BufferClient notifications
     async for batch in cycflow.stream("127.0.0.1", 5000, "SensorStream"):

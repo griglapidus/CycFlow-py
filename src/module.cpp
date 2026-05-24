@@ -27,5 +27,5 @@ PYBIND11_MODULE(_cycflow, m) {
     cyclibpy::bind_server(m);   // TcpServer
     cyclibpy::bind_cbf(m);      // CbfFile, CbfReader, read_cbf_to_array, CBF enums
 
-    m.attr("__version__") = "0.4.0";
+    m.attr("__version__") = "0.5.0";
 }

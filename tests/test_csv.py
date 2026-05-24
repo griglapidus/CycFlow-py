@@ -32,7 +32,8 @@ class TestCsvWriter:
         rule = cycflow.RecRule(attrs)
         buf = cycflow.RecBuffer(rule, capacity=100)
 
-        writer = cycflow.CsvWriter(self.path, buf, auto_start=True, batch_size=100)
+        writer = cycflow.CsvWriter(self.path, buf, auto_start=True, batch_size=100,
+                                   add_timestamp_suffix=False)
         writer.finish()
 
         lines = read_lines(self.path)
@@ -51,7 +52,8 @@ class TestCsvWriter:
         id_value = rule_attrs[2].id
 
         buf = cycflow.RecBuffer(rule, capacity=100)
-        csv = cycflow.CsvWriter(self.path, buf, auto_start=True, batch_size=100)
+        csv = cycflow.CsvWriter(self.path, buf, auto_start=True, batch_size=100,
+                                add_timestamp_suffix=False)
 
         writer = cycflow.RecordWriter(buf, batch_capacity=10)
 
@@ -93,7 +95,8 @@ class TestCsvWriter:
         id_value = rule_attrs[2].id
 
         buf = cycflow.RecBuffer(rule, capacity=100)
-        csv = cycflow.CsvWriter(self.path, buf, auto_start=True, batch_size=100)
+        csv = cycflow.CsvWriter(self.path, buf, auto_start=True, batch_size=100,
+                                add_timestamp_suffix=False)
 
         writer = cycflow.RecordWriter(buf, batch_capacity=10)
         rec = writer.next_record()
@@ -117,7 +120,8 @@ class TestCsvWriter:
 
         COUNT = 1000
         buf = cycflow.RecBuffer(rule, capacity=5000)
-        csv = cycflow.CsvWriter(self.path, buf, auto_start=True, batch_size=200)
+        csv = cycflow.CsvWriter(self.path, buf, auto_start=True, batch_size=200,
+                                add_timestamp_suffix=False)
 
         writer = cycflow.RecordWriter(buf, batch_capacity=200)
         for i in range(COUNT):
@@ -144,7 +148,8 @@ class TestCsvWriter:
         TOTAL = 5000
         buf = cycflow.RecBuffer(rule, capacity=2000)
         writer = cycflow.RecordWriter(buf, batch_capacity=100, block_on_full=True)
-        csv    = cycflow.CsvWriter(self.path, buf, auto_start=True, batch_size=100)
+        csv    = cycflow.CsvWriter(self.path, buf, auto_start=True, batch_size=100,
+                                   add_timestamp_suffix=False)
 
         for i in range(TOTAL):
             rec = writer.next_record()

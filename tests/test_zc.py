@@ -1,8 +1,10 @@
 # test_zc.py
 # SPDX-License-Identifier: MIT
 #
-# Tests for v0.4.0 zero-copy reader/writer (RecordReaderZC / RecordWriterZC)
-# and the new TcpServer.unregister_buffer() / TcpServerManager APIs.
+# Tests for v0.4.0 zero-copy reader/writer (RecordReaderZC / RecordWriterZC),
+# TcpServer.unregister_buffer() / TcpServerManager APIs,
+# and v0.5.0 CbfWriter/CsvWriter file-rotation features (restart, maxRecords,
+# addTimestampSuffix, default ctor + init()).
 
 import threading
 import time
@@ -243,3 +245,155 @@ class TestTcpServerManager:
         buf = cycflow.RecBuffer(rule, capacity=10)
         with pytest.raises(RuntimeError):
             mgr.register_buffer("X", buf, batch_size=1)
+
+
+# ---------------------------------------------------------------------------
+# v0.5.0 — CbfWriter / CsvWriter new features
+# ---------------------------------------------------------------------------
+
+class TestCbfWriterV05:
+    """v0.5.0 added default ctor + init(), addTimestampSuffix, maxRecords,
+    and restart() to CbfWriter."""
+
+    def _make_buffer(self, capacity: int = 1000):
+        rule = cycflow.make_rule([("Val", cycflow.DataType.Int32)])
+        return cycflow.RecBuffer(rule, capacity=capacity), rule
+
+    def test_default_ctor_then_init(self, tmp_path):
+        buf, _ = self._make_buffer()
+        writer = cycflow.CbfWriter()
+        writer.init(str(tmp_path / "out.cbf"), buf,
+                    auto_start=False, add_timestamp_suffix=False)
+        # init() without auto_start must not start the thread
+        assert not writer.is_running()
+
+    def test_constructor_no_timestamp(self, tmp_path):
+        buf, _ = self._make_buffer()
+        out = tmp_path / "fixed.cbf"
+        writer = cycflow.CbfWriter(str(out), buf,
+                                   auto_start=False,
+                                   add_timestamp_suffix=False)
+        assert not writer.is_running()
+
+    def test_timestamp_suffix_creates_different_filename(self, tmp_path):
+        buf, _ = self._make_buffer()
+        # With add_timestamp_suffix=True the actual file written has a
+        # timestamp inserted, so the plain path does not exist right away.
+        writer = cycflow.CbfWriter(str(tmp_path / "data.cbf"), buf,
+                                   auto_start=False,
+                                   add_timestamp_suffix=True)
+        assert not writer.is_running()
+
+    def test_restart_called_while_running(self, tmp_path):
+        buf, _ = self._make_buffer(capacity=500)
+        id_val = cycflow.PReg.get_id("Val")
+
+        writer = cycflow.CbfWriter(str(tmp_path / "rot.cbf"), buf,
+                                   auto_start=True,
+                                   add_timestamp_suffix=False,
+                                   max_records=0)
+        rec_writer = cycflow.RecordWriter(buf, batch_capacity=32)
+
+        for i in range(50):
+            rec = rec_writer.next_record()
+            rec.set_int32(id_val, i)
+            rec_writer.commit_record()
+        rec_writer.flush()
+
+        writer.restart()  # must not crash or deadlock
+
+        for i in range(50, 100):
+            rec = rec_writer.next_record()
+            rec.set_int32(id_val, i)
+            rec_writer.commit_record()
+        rec_writer.flush()
+
+        writer.finish()
+        assert not writer.is_running()
+
+    def test_max_records_triggers_rotation(self, tmp_path):
+        """max_records>0: writer must stay alive and handle rotation internally."""
+        buf, _ = self._make_buffer(capacity=500)
+        id_val = cycflow.PReg.get_id("Val")
+
+        writer = cycflow.CbfWriter(str(tmp_path / "rot.cbf"), buf,
+                                   auto_start=True,
+                                   add_timestamp_suffix=True,
+                                   max_records=30)
+        rec_writer = cycflow.RecordWriter(buf, batch_capacity=16)
+
+        for i in range(120):  # 4× the rotation threshold
+            rec = rec_writer.next_record()
+            rec.set_int32(id_val, i)
+            rec_writer.commit_record()
+        rec_writer.flush()
+
+        writer.finish()
+        assert not writer.is_running()
+
+
+class TestCsvWriterV05:
+    """v0.5.0 added the same file-rotation API to CsvWriter."""
+
+    def _make_buffer(self, capacity: int = 1000):
+        rule = cycflow.make_rule([("X", cycflow.DataType.Float),
+                                  ("Y", cycflow.DataType.Float)])
+        return cycflow.RecBuffer(rule, capacity=capacity), rule
+
+    def test_default_ctor_then_init(self, tmp_path):
+        buf, _ = self._make_buffer()
+        writer = cycflow.CsvWriter()
+        writer.init(str(tmp_path / "out.csv"), buf,
+                    auto_start=False, add_timestamp_suffix=False)
+        assert not writer.is_running()
+
+    def test_restart_called_while_running(self, tmp_path):
+        buf, _ = self._make_buffer(capacity=500)
+        id_x = cycflow.PReg.get_id("X")
+        id_y = cycflow.PReg.get_id("Y")
+
+        writer = cycflow.CsvWriter(str(tmp_path / "rot.csv"), buf,
+                                   auto_start=True,
+                                   add_timestamp_suffix=False,
+                                   max_records=0)
+        rec_writer = cycflow.RecordWriter(buf, batch_capacity=32)
+
+        for i in range(50):
+            rec = rec_writer.next_record()
+            rec.set_float(id_x, float(i))
+            rec.set_float(id_y, float(-i))
+            rec_writer.commit_record()
+        rec_writer.flush()
+
+        writer.restart()  # must not crash
+
+        for i in range(50, 100):
+            rec = rec_writer.next_record()
+            rec.set_float(id_x, float(i))
+            rec.set_float(id_y, float(-i))
+            rec_writer.commit_record()
+        rec_writer.flush()
+
+        writer.finish()
+        assert not writer.is_running()
+
+    def test_max_records_triggers_rotation(self, tmp_path):
+        buf, _ = self._make_buffer(capacity=500)
+        id_x = cycflow.PReg.get_id("X")
+        id_y = cycflow.PReg.get_id("Y")
+
+        writer = cycflow.CsvWriter(str(tmp_path / "rot.csv"), buf,
+                                   auto_start=True,
+                                   add_timestamp_suffix=True,
+                                   max_records=25)
+        rec_writer = cycflow.RecordWriter(buf, batch_capacity=16)
+
+        for i in range(100):
+            rec = rec_writer.next_record()
+            rec.set_float(id_x, float(i))
+            rec.set_float(id_y, 0.0)
+            rec_writer.commit_record()
+        rec_writer.flush()
+
+        writer.finish()
+        assert not writer.is_running()

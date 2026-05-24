@@ -2,8 +2,10 @@
 // bind_cbf.cpp — CbfReader + low-level CbfFile, CbfMode, CbfSectionType,
 // CbfSectionHeader.
 //
-// v0.4.0: CbfReader's template constructor accepts a UseWriter tag for
+// v0.4.0: CbfReader's template constructor accepts a UseWriter<T>{} tag for
 // picking the writer implementation. Expose via a `use_zc` boolean argument.
+// v0.5.0: constructor signature unchanged; UseWriter<T>{} tag form was already
+// correct. No binding changes required for CbfReader.
 //
 
 #include <pybind11/pybind11.h>

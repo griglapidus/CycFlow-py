@@ -197,7 +197,7 @@ void bind_writer(py::module_& m) {
         .def("init",
             [](cyc::RecordProducer& self,
                std::size_t cap, std::size_t batch) {
-                self.init<cyc::RecordWriter>(cap, batch);
+                self.init(cap, batch);
             },
             py::arg("buffer_capacity")   = 10000,
             py::arg("writer_batch_size") = 100,
@@ -205,7 +205,7 @@ void bind_writer(py::module_& m) {
         .def("init_zc",
             [](cyc::RecordProducer& self,
                std::size_t cap, std::size_t batch) {
-                self.init<cyc::RecordWriterZC>(cap, batch);
+                self.init(cyc::UseWriter<cyc::RecordWriterZC>{}, cap, batch);
             },
             py::arg("buffer_capacity")   = 10000,
             py::arg("writer_batch_size") = 100,

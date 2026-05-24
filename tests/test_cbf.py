@@ -136,7 +136,8 @@ class TestCbfReader:
         id_dbl = rule_attrs[2].id
 
         buf = cycflow.RecBuffer(rule, capacity=max(record_count + 100, 1000))
-        cbf_writer = cycflow.CbfWriter(self.path, buf, auto_start=True, batch_size=100)
+        cbf_writer = cycflow.CbfWriter(self.path, buf, auto_start=True, batch_size=100,
+                                        add_timestamp_suffix=False)
         cbf_writer.set_alias("TestGen")
 
         writer = cycflow.RecordWriter(buf, batch_capacity=100)
@@ -196,7 +197,8 @@ class TestCbfReader:
         attrs = [cycflow.PAttr("Val", cycflow.DataType.Int32)]
         rule = cycflow.RecRule(attrs)
         buf = cycflow.RecBuffer(rule, capacity=100)
-        writer = cycflow.CbfWriter(self.path, buf, auto_start=True, batch_size=100)
+        writer = cycflow.CbfWriter(self.path, buf, auto_start=True, batch_size=100,
+                                   add_timestamp_suffix=False)
         writer.finish()
 
         reader = cycflow.CbfReader(self.path)
@@ -233,7 +235,8 @@ class TestCbfWriterIntegration:
         TOTAL = 5000
         buf = cycflow.RecBuffer(rule, capacity=2000)
         producer = cycflow.RecordWriter(buf, batch_capacity=100)
-        consumer = cycflow.CbfWriter(self.path, buf, auto_start=True, batch_size=100)
+        consumer = cycflow.CbfWriter(self.path, buf, auto_start=True, batch_size=100,
+                                     add_timestamp_suffix=False)
         consumer.set_alias("IntgrTest")
 
         for i in range(TOTAL):
